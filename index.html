@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+  <title>Riset Pengembangan KKOP - AP2</title>
+  <script src="/cesium/Cesium.js"></script>
+  <style>
+      @import url(/cesium/Widgets/widgets.css);
+      html, body, #map {
+          width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+      }
+      #buildingBtn {
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          z-index: 9999;
+      }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <button id="buildingBtn" onclick="addBuilding">Tambah gedung</button>
+  <script>
+    var osm = Cesium.createOpenStreetMapImageryProvider({
+        url : 'https://a.tile.openstreetmap.org/'
+    });
+    var viewer = new Cesium.Viewer('map', {
+        animation: false,
+        infoBox: false,
+        timeline: false,
+        homeButton: false,
+        geocoder: false,
+        vrButton: true,
+        navigationHelpButton: false,
+        scene3DOnly: true,
+        baseLayerPicker : false,
+        imageryProvider : osm
+    });
+    var kmlPromise = viewer.dataSources.add(Cesium.KmlDataSource.load('/data/kkop-cgk.kml',
+        {
+            camera: viewer.scene.camera,
+            canvas: viewer.scene.canvas,
+            clampToGround: true
+        })
+    );
+    Cesium.when(viewer.flyTo(kmlPromise));
+
+    document.getElementById("buildingBtn").onclick = function () {
+        var building = viewer.entities.add({
+            name : 'Calon bangunan',
+            position: Cesium.Cartesian3.fromDegrees(106.656, -6.130, 0),
+            box : {
+                dimensions : new Cesium.Cartesian3(50, 120, 500),
+                material : Cesium.Color.RED.withAlpha(0.5),
+                outline : true,
+                outlineColor : Cesium.Color.BLACK
+            }
+        });
+        viewer.flyTo(building);
+    };
+  </script>
+</body>
+</html>
