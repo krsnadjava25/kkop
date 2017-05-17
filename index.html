@@ -11,7 +11,7 @@
       html, body, #map {
           width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
       }
-      #buildingBtn {
+      .formContainer {
           position: absolute;
           top: 8px;
           left: 8px;
@@ -21,7 +21,14 @@
 </head>
 <body>
   <div id="map"></div>
-  <button id="buildingBtn" onclick="addBuilding">Tambah gedung</button>
+  <div class="formContainer">
+    <input type="text" id="inp1" placeholder="Latitude"/>
+    <input type="text" id="inp2" placeholder="Longitude"/>
+    <input type="text" id="inp3" placeholder="Panjang (dalam meter)"/>
+    <input type="text" id="inp4" placeholder="Lebar (dalam meter)"/>
+    <input type="text" id="inp5" placeholder="Tinggi (dalam meter)"/>
+    <button id="buildingBtn" onclick="addBuilding">Tambah gedung</button>
+  </div>
   <script>
     var osm = Cesium.createOpenStreetMapImageryProvider({
         url : 'https://a.tile.openstreetmap.org/'
@@ -48,17 +55,27 @@
     Cesium.when(viewer.flyTo(kmlPromise));
 
     document.getElementById("buildingBtn").onclick = function () {
+        var lat = document.getElementById("inp1").value;
+        var lon = document.getElementById("inp2").value;
+        var len = document.getElementById("inp3").value;
+        var wid = document.getElementById("inp4").value;
+        var hei = document.getElementById("inp5").value;
         var building = viewer.entities.add({
             name : 'Calon bangunan',
-            position: Cesium.Cartesian3.fromDegrees(106.656, -6.130, 0),
+            position: Cesium.Cartesian3.fromDegrees(lat, lon, 0),
             box : {
-                dimensions : new Cesium.Cartesian3(50, 120, 500),
+                dimensions : new Cesium.Cartesian3(len, wid, hei),
                 material : Cesium.Color.RED.withAlpha(0.5),
                 outline : true,
                 outlineColor : Cesium.Color.BLACK
             }
         });
         viewer.flyTo(building);
+        document.getElementById("inp1").value = null;
+        document.getElementById("inp2").value = null;
+        document.getElementById("inp3").value = null;
+        document.getElementById("inp4").value = null;
+        document.getElementById("inp5").value = null;
     };
   </script>
 </body>
