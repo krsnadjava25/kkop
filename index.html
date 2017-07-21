@@ -17,66 +17,246 @@
           left: 8px;
           z-index: 9999;
       }
+      #layerPicker {
+          position: absolute;
+          top: 32px;
+          right: 4px;
+          z-index: 9999;
+      }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="formContainer">
+  <div id="layerPicker"></div>
+  <!-- <div class="formContainer">
     <input type="text" id="inp1" placeholder="Latitude"/>
     <input type="text" id="inp2" placeholder="Longitude"/>
     <input type="text" id="inp3" placeholder="Panjang (dalam meter)"/>
     <input type="text" id="inp4" placeholder="Lebar (dalam meter)"/>
     <input type="text" id="inp5" placeholder="Tinggi (dalam meter)"/>
     <button id="buildingBtn" onclick="addBuilding">Tambah gedung</button>
-  </div>
+  </div> -->
   <script>
-    var osm = Cesium.createOpenStreetMapImageryProvider({
-        url : 'https://a.tile.openstreetmap.org/'
-    });
-    var viewer = new Cesium.Viewer('map', {
-        animation: false,
-        infoBox: false,
-        timeline: false,
-        homeButton: false,
-        geocoder: false,
-        vrButton: true,
-        navigationHelpButton: false,
-        scene3DOnly: true,
-        baseLayerPicker : false,
-        imageryProvider : osm
-    });
-    var kmlPromise = viewer.dataSources.add(Cesium.KmlDataSource.load('./data/kkop-cgk.kml',
-        {
-            camera: viewer.scene.camera,
-            canvas: viewer.scene.canvas,
-            clampToGround: true
-        })
-    );
-    Cesium.when(viewer.flyTo(kmlPromise));
-
-    document.getElementById("buildingBtn").onclick = function () {
-        var lat = document.getElementById("inp1").value;
-        var lon = document.getElementById("inp2").value;
-        var len = document.getElementById("inp3").value;
-        var wid = document.getElementById("inp4").value;
-        var hei = document.getElementById("inp5").value;
-        var building = viewer.entities.add({
-            name : 'Calon bangunan',
-            position: Cesium.Cartesian3.fromDegrees(lat, lon, 0),
-            box : {
-                dimensions : new Cesium.Cartesian3(len, wid, hei),
-                material : Cesium.Color.RED.withAlpha(0.5),
-                outline : true,
-                outlineColor : Cesium.Color.BLACK
+    function Map(){
+        this.imageryViews = [];
+        this.pinBuilder = new Cesium.PinBuilder();
+        // this.osm = Cesium.createOpenStreetMapImageryProvider({
+        //     url : 'https://a.tile.openstreetmap.org/'
+        // });
+        this.osm = new Cesium.ProviderViewModel({
+            name : 'Open\u00adStreet\u00adMap',
+            iconUrl : Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/openStreetMap.png'),
+            tooltip : 'OpenStreetMap (OSM) is a collaborative project to create a free editable \
+                        map of the world.\nhttp://www.openstreetmap.org',
+            creationFunction : function() {
+                return Cesium.createOpenStreetMapImageryProvider({
+                    url : 'https://a.tile.openstreetmap.org/'
+                });
             }
         });
-        viewer.flyTo(building);
-        document.getElementById("inp1").value = null;
-        document.getElementById("inp2").value = null;
-        document.getElementById("inp3").value = null;
-        document.getElementById("inp4").value = null;
-        document.getElementById("inp5").value = null;
+        this.bing = new Cesium.ProviderViewModel({
+            name : 'Bing Maps',
+            iconUrl : Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/bingAerial.png'),
+            tooltip : 'Bing Maps (previously Live Search Maps, Windows Live Maps, Windows Live Local, and MSN Virtual Earth) \
+            is a web mapping service provided as a part of Microsoft\'s Bing suite of search engines and powered by the Bing Maps \
+            for Enterprise framework.',
+            creationFunction : function() {
+                return Cesium.BingMapsImageryProvider({
+                    url : '//dev.virtualearth.net',
+                    mapStyle : Cesium.BingMapsStyle.AERIAL
+                });
+            }
+        });
+        this.airportCenter = Cesium.Cartesian3.fromDegrees(106.660729, -6.123963, 40000.0);
+        this.existing = []; // Gedung existing
+        this.obstacle = []; // Obstacle
+        this.viewer = null;
+        this.morphCompleteListener =  function () {
+            setTimeout(function(){
+                this.viewer.camera.setView({
+                    destination: this.airportCenter
+                });
+                // this.viewer.camera.lookAt(this.airportCenter, new Cesium.Cartesian3(0.0, 0.0, 40000.0));
+            }.bind(this), 300);
+        };
+        this.init = function(mapContainer, pickerContainer) {
+            this.viewer = new Cesium.Viewer(mapContainer, {
+                animation: false,
+                infoBox: false,
+                timeline: false,
+                homeButton: false,
+                geocoder: false,
+                vrButton: true,
+                navigationHelpButton: false,
+                scene3DOnly: true,
+                baseLayerPicker : false,
+                imageryProvider : false
+            });
+            this.imageryViews.push(this.osm);
+            // this.imageryViews.push(this.bing); /* STILL BUGGED */
+            var layers = this.viewer.imageryLayers;
+            var baseLayerPicker = new Cesium.BaseLayerPicker(pickerContainer, {
+                globe : this.viewer.scene.globe,
+                imageryProviderViewModels : this.imageryViews
+            });
+            this.viewer.camera.setView({
+                destination: this.airportCenter
+            });
+            this.viewer.scene.morphComplete.addEventListener(this.morphCompleteListener.bind(this));
+        };
+        this.scene2D = function() {
+            this.viewer.scene.morphTo2D();
+            this.viewer.scene.completeMorph();
+        };
+        this.scene3D = function() {
+            this.viewer.scene.morphTo3D();
+            this.viewer.scene.completeMorph();
+        };
+        this.load3D = function(lat, long, file) {
+            var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
+                Cesium.Cartesian3.fromDegrees(long, lat, 0.0));
+            var model = this.viewer.scene.primitives.add(Cesium.Model.fromGltf({
+                url : file,
+                modelMatrix : modelMatrix,
+                scale : 1.0,
+                allowPicking: true
+            }));
+            return model;
+        };
+        this.loadPin = function() {
+            var entity = this.viewer.entities.add({
+                name: 'pin1',
+                position: Cesium.Cartesian3.fromDegrees(106.660729, -6.123963, 0.0),
+                billboard: {
+                    image: this.pinBuilder.fromColor(Cesium.Color.SALMON, 32),
+                    verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                }
+            });
+        };
+        this.flags = {
+            looking : false
+        };
+        this.startMousePosition;
+        this.mousePosition;
+        this.handler;
+        this.enableAtcMode = function() {
+            this.viewer.camera.setView({
+                destination: Cesium.Cartesian3.fromDegrees(106.659099, -6.125459, 56.0),
+                orientation: {
+                    heading : 0.0,
+                    pitch : 0.0,
+                    roll : 0.0
+                }
+            });
+            this.viewer.scene.screenSpaceCameraController.enableRotate = false;
+            this.viewer.scene.screenSpaceCameraController.enableTranslate = false;
+            this.viewer.scene.screenSpaceCameraController.enableZoom = false;
+            this.viewer.scene.screenSpaceCameraController.enableTilt = false;
+            this.viewer.scene.screenSpaceCameraController.enableLook = false;
+            this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.canvas);
+
+            this.handler.setInputAction(function(movement) {
+                this.flags.looking = true;
+                this.mousePosition = this.startMousePosition = Cesium.Cartesian3.clone(movement.position);
+            }.bind(this), Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+            this.handler.setInputAction(function(movement) {
+                this.mousePosition = movement.endPosition;
+            }.bind(this), Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+            this.handler.setInputAction(function(position) {
+                this.flags.looking = false;
+            }.bind(this), Cesium.ScreenSpaceEventType.LEFT_UP);
+            this.viewer.clock.onTick.addEventListener(function(clock) {
+                var camera = this.viewer.camera;
+                var ellipsoid = this.viewer.scene.globe.ellipsoid;
+
+                if (this.flags.looking) {
+                    var width = this.viewer.canvas.clientWidth;
+                    var height = this.viewer.canvas.clientHeight;
+
+                    // Coordinate (0.0, 0.0) will be where the mouse was clicked.
+                    var x = (this.mousePosition.x - this.startMousePosition.x) / width;
+                    var y = -(this.mousePosition.y - this.startMousePosition.y) / height;
+
+                    var lookFactor = 0.05;
+                    camera.lookRight(x * lookFactor);
+                    camera.lookUp(y * lookFactor);
+                }
+            }.bind(this));
+        };
+        this.disableAtcMode = function() {
+            this.viewer.camera.setView({
+                destination: this.airportCenter
+            });
+            this.viewer.scene.screenSpaceCameraController.enableRotate = true;
+            this.viewer.scene.screenSpaceCameraController.enableTranslate = true;
+            this.viewer.scene.screenSpaceCameraController.enableZoom = true;
+            this.viewer.scene.screenSpaceCameraController.enableTilt = true;
+            this.viewer.scene.screenSpaceCameraController.enableLook = true;
+            this.viewer.clock.onTick.removeEventListener();
+            this.handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_DOWN);
+            this.handler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+            this.handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_UP);
+        };
     };
+
+    var map = new Map();
+    map.init('map', 'layerPicker');
+    // var model1 = map.load3D(-6.125057, 106.656230, './data/wisma-ap.gltf');
+    // var model2 = map.load3D(-6.130180, 106.655908, './data/terminal1.gltf');
+    // var model3 = map.load3D(-6.122455, 106.652971, './data/terminal2.gltf');
+    // var model4 = map.load3D(-6.118564, 106.661344, './data/terminal3.gltf');
+    // var model5 = map.load3D(-6.125459, 106.659099, './data/atc-tower.gltf');
+    // var model6 = map.load3D(-6.123434, 106.661974, './data/tugu-batu.gltf');
+    
+    // var kmlPromise = viewer.dataSources.add(Cesium.KmlDataSource.load('./data/kkop-cgk.kml',
+    //     {
+    //         camera: viewer.scene.camera,
+    //         canvas: viewer.scene.canvas,
+    //         clampToGround: true
+    //     })
+    // );
+    // var kmzPromise = viewer.dataSources.add(Cesium.KmlDataSource.load('./data/file2.kmz',
+    //     {
+    //         camera: viewer.scene.camera,
+    //         canvas: viewer.scene.canvas
+    //     })
+    // );
+    // Cesium.when(viewer.flyTo(kmzPromise));
+    // var scene = viewer.scene;
+    // var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
+    //     Cesium.Cartesian3.fromDegrees(-75.62898254394531, 40.02804946899414, 0.0));
+    // var model = scene.primitives.add(Cesium.Model.fromGltf({
+    //     url : './data/Bandara5.gltf',
+    //     modelMatrix : modelMatrix,
+    //     scale : 200.0
+    // }));
+    // viewer.flyTo(model);
+
+    // document.getElementById("buildingBtn").onclick = function () {
+    //     var lat = document.getElementById("inp1").value;
+    //     var lon = document.getElementById("inp2").value;
+    //     var len = document.getElementById("inp3").value;
+    //     var wid = document.getElementById("inp4").value;
+    //     var hei = document.getElementById("inp5").value;
+    //     var building = viewer.entities.add({
+    //         name : 'Calon bangunan',
+    //         position: Cesium.Cartesian3.fromDegrees(lat, lon, 0),
+    //         box : {
+    //             dimensions : new Cesium.Cartesian3(len, wid, hei),
+    //             material : Cesium.Color.RED.withAlpha(0.5),
+    //             outline : true,
+    //             outlineColor : Cesium.Color.BLACK
+    //         }
+    //     });
+    //     viewer.flyTo(building);
+    //     document.getElementById("inp1").value = null;
+    //     document.getElementById("inp2").value = null;
+    //     document.getElementById("inp3").value = null;
+    //     document.getElementById("inp4").value = null;
+    //     document.getElementById("inp5").value = null;
+    // };
   </script>
 </body>
 </html>
