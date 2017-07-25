@@ -37,13 +37,24 @@
     <button id="buildingBtn" onclick="addBuilding">Tambah gedung</button>
   </div> -->
   <script>
-    function Map(){
-        this.imageryViews = [];
-        this.pinBuilder = new Cesium.PinBuilder();
-        // this.osm = Cesium.createOpenStreetMapImageryProvider({
-        //     url : 'https://a.tile.openstreetmap.org/'
-        // });
-        this.osm = new Cesium.ProviderViewModel({
+    function Map() {
+        this.mapDom = null;
+        this._atcTower = null;
+        this._atc = null;
+        this._atcMode = false;
+        this.airportCenter = Cesium.Cartesian3.fromDegrees(106.660729, -6.123963, 40000.0); // 
+        this.imageryViews = []; // Imagery layers (OSM & Bing Map)
+        this.pinBuilder = new Cesium.PinBuilder(); // Pinpoint obstacle builder
+        this.existings = []; // Gedung existing
+        this.obstacles = []; // Obstacle
+        this.viewer = null; // Map view
+        this.flags = { // Handler flags
+            looking : false
+        };
+        this._startMousePosition; // Starting mouse position
+        this._mousePosition; // Current mouse position
+        this.handler; // Scene event handler
+        this._osm = new Cesium.ProviderViewModel({
             name : 'Open\u00adStreet\u00adMap',
             iconUrl : Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/openStreetMap.png'),
             tooltip : 'OpenStreetMap (OSM) is a collaborative project to create a free editable \
@@ -54,24 +65,20 @@
                 });
             }
         });
-        this.bing = new Cesium.ProviderViewModel({
+        this._bing = new Cesium.ProviderViewModel({
             name : 'Bing Maps',
             iconUrl : Cesium.buildModuleUrl('Widgets/Images/ImageryProviders/bingAerial.png'),
             tooltip : 'Bing Maps (previously Live Search Maps, Windows Live Maps, Windows Live Local, and MSN Virtual Earth) \
             is a web mapping service provided as a part of Microsoft\'s Bing suite of search engines and powered by the Bing Maps \
             for Enterprise framework.',
             creationFunction : function() {
-                return Cesium.BingMapsImageryProvider({
-                    url : '//dev.virtualearth.net',
+                return new Cesium.BingMapsImageryProvider({
+                    url : 'https://dev.virtualearth.net',
                     mapStyle : Cesium.BingMapsStyle.AERIAL
                 });
             }
         });
-        this.airportCenter = Cesium.Cartesian3.fromDegrees(106.660729, -6.123963, 40000.0);
-        this.existing = []; // Gedung existing
-        this.obstacle = []; // Obstacle
-        this.viewer = null;
-        this.morphCompleteListener =  function () {
+        this._morphCompleteListener =  function () {
             setTimeout(function(){
                 this.viewer.camera.setView({
                     destination: this.airportCenter
@@ -79,7 +86,64 @@
                 // this.viewer.camera.lookAt(this.airportCenter, new Cesium.Cartesian3(0.0, 0.0, 40000.0));
             }.bind(this), 300);
         };
-        this.init = function(mapContainer, pickerContainer) {
+        this._load3D = function(id, lat, long, file) {
+            // var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
+            //     Cesium.Cartesian3.fromDegrees(long, lat, 0.0));
+            // var model = this.viewer.scene.primitives.add(Cesium.Model.fromGltf({
+            //     url : file,
+            //     modelMatrix : modelMatrix,
+            //     scale : 1.0,
+            //     allowPicking: true
+            // }));
+            // return model;
+            this.viewer.entities.add({
+                id: 'existing-' + id + '-3d',
+                name: 'existing-' + id + '-3d',
+                position: Cesium.Cartesian3.fromDegrees(long, lat, 0.0),
+                model: {
+                    uri: file
+                }
+            });
+        };
+        this._loadPin = function(id, lat, long, type) {
+            var color;
+            switch(type) {
+                case 'gunung':
+                    color = Cesium.Color.MAROON;
+                    break;
+                case 'gedung':
+                    color = Cesium.Color.SKYBLUE;
+                    break;
+                case 'menara':
+                    color = Cesium.Color.RED;
+                    break;
+                case 'pohon':
+                    color = Cesium.Color.GREENYELLOW;
+                    break;
+                case 'flyover':
+                    color = Cesium.Color.GRAY;
+                    break;
+                case 'spbu':
+                    color = Cesium.Color.WHITE;
+                    break;
+                case 'lampu':
+                    color = Cesium.Color.YELLOW;
+                    break;
+                default:
+                    color = Cesium.Color.BLUE;
+            }
+            var entity = this.viewer.entities.add({
+                id: 'obstacle-' + id + '-' + type,
+                name: 'obstacle-' + id + '-' + type,
+                position: Cesium.Cartesian3.fromDegrees(long, lat, 0.0),
+                billboard: {
+                    image: this.pinBuilder.fromColor(color, 32),
+                    verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                }
+            });
+        };
+        this.init = function(mapContainer, pickerContainer, atc) {
+            // Cesium.BingMapsApi.defaultKey = 'AiCibxE6GWcTpteKtXFr1qh5pKNz7MfyRqDW56bCVbRE02kBaP24ZUcSGk9PpHtO';
             this.viewer = new Cesium.Viewer(mapContainer, {
                 animation: false,
                 infoBox: false,
@@ -89,11 +153,11 @@
                 vrButton: true,
                 navigationHelpButton: false,
                 scene3DOnly: true,
-                baseLayerPicker : false,
-                imageryProvider : false
+                baseLayerPicker: false,
+                imageryProvider: false
             });
-            this.imageryViews.push(this.osm);
-            // this.imageryViews.push(this.bing); /* STILL BUGGED */
+            this.imageryViews.push(this._osm);
+            this.imageryViews.push(this._bing);
             var layers = this.viewer.imageryLayers;
             var baseLayerPicker = new Cesium.BaseLayerPicker(pickerContainer, {
                 globe : this.viewer.scene.globe,
@@ -102,8 +166,71 @@
             this.viewer.camera.setView({
                 destination: this.airportCenter
             });
-            this.viewer.scene.morphComplete.addEventListener(this.morphCompleteListener.bind(this));
+            this._atc = atc;
+            this._atcTower = new Cesium.Entity({
+                id: 'atc-tower',
+                name: 'atc-tower',
+                position: Cesium.Cartesian3.fromDegrees(atc.long, atc.lat, 0.0),
+                model: {
+                    uri: atc.file
+                }
+            });
+            this.viewer.entities.add(this._atcTower);
+            this.mapDom = document.getElementById(mapContainer);
+            this.viewer.scene.morphComplete.addEventListener(this._morphCompleteListener.bind(this));
+            this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.canvas);
+            this.handler.setInputAction(function(click) {
+                var pickedObject = this.viewer.scene.pick(click.position);
+                if (Cesium.defined(pickedObject)) {
+                    var obj = Cesium.defaultValue(pickedObject.id, pickedObject.primitive.id);
+                    if (obj instanceof Cesium.Entity) {
+                        if (obj._name.indexOf('obstacle') !== -1) {
+                            var obstacleEvent = new CustomEvent("obstacleClicked", {
+                                detail: {
+                                    id: parseInt(obj._id.split('-')[1]),
+                                    type: obj._id.split('-')[2],
+                                    time: new Date(),
+                                }
+                            });
+                            this.mapDom.dispatchEvent(obstacleEvent);
+                            if(!this._atcMode) this.viewer.flyTo(obj);
+                        } else if (obj._name.indexOf('existing') !== -1) {
+                            var existingEvent = new CustomEvent("existingClicked", {
+                                detail: {
+                                    id: parseInt(obj._id.split('-')[1]),
+                                    mode: obj._id.split('-')[2],
+                                    time: new Date(),
+                                }
+                            });
+                            this.mapDom.dispatchEvent(existingEvent);
+                            if(!this._atcMode) this.viewer.flyTo(obj);
+                        }
+                    }
+                }
+            }.bind(this), Cesium.ScreenSpaceEventType.LEFT_CLICK);
         };
+        // Untuk fly to abis searching
+        this.zoomExisting = function(id) {
+            for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                if (id == this.viewer.entities._entities._array[i]._id.split('-')[1]
+                    && this.viewer.entities._entities._array[i]._id.indexOf('existing') > -1
+                ) {
+                    this.viewer.flyTo(this.viewer.entities._entities._array[i]);
+                }
+            }
+            
+        };
+        this.zoomObstacle = function(id) {
+            for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                if (id == this.viewer.entities._entities._array[i]._id.split('-')[1]
+                    && this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                ) {
+                    this.viewer.flyTo(this.viewer.entities._entities._array[i]);
+                }
+            }
+            
+        };
+        // Scene selector
         this.scene2D = function() {
             this.viewer.scene.morphTo2D();
             this.viewer.scene.completeMorph();
@@ -112,36 +239,11 @@
             this.viewer.scene.morphTo3D();
             this.viewer.scene.completeMorph();
         };
-        this.load3D = function(lat, long, file) {
-            var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
-                Cesium.Cartesian3.fromDegrees(long, lat, 0.0));
-            var model = this.viewer.scene.primitives.add(Cesium.Model.fromGltf({
-                url : file,
-                modelMatrix : modelMatrix,
-                scale : 1.0,
-                allowPicking: true
-            }));
-            return model;
-        };
-        this.loadPin = function() {
-            var entity = this.viewer.entities.add({
-                name: 'pin1',
-                position: Cesium.Cartesian3.fromDegrees(106.660729, -6.123963, 0.0),
-                billboard: {
-                    image: this.pinBuilder.fromColor(Cesium.Color.SALMON, 32),
-                    verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                }
-            });
-        };
-        this.flags = {
-            looking : false
-        };
-        this.startMousePosition;
-        this.mousePosition;
-        this.handler;
         this.enableAtcMode = function() {
+            this._atcMode = true;
+            this._atcTower.show = false;
             this.viewer.camera.setView({
-                destination: Cesium.Cartesian3.fromDegrees(106.659099, -6.125459, 56.0),
+                destination: Cesium.Cartesian3.fromDegrees(this._atc.long, this._atc.lat, 56.0),
                 orientation: {
                     heading : 0.0,
                     pitch : 0.0,
@@ -153,15 +255,14 @@
             this.viewer.scene.screenSpaceCameraController.enableZoom = false;
             this.viewer.scene.screenSpaceCameraController.enableTilt = false;
             this.viewer.scene.screenSpaceCameraController.enableLook = false;
-            this.handler = new Cesium.ScreenSpaceEventHandler(this.viewer.canvas);
 
             this.handler.setInputAction(function(movement) {
                 this.flags.looking = true;
-                this.mousePosition = this.startMousePosition = Cesium.Cartesian3.clone(movement.position);
+                this._mousePosition = this._startMousePosition = Cesium.Cartesian3.clone(movement.position);
             }.bind(this), Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
             this.handler.setInputAction(function(movement) {
-                this.mousePosition = movement.endPosition;
+                this._mousePosition = movement.endPosition;
             }.bind(this), Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
             this.handler.setInputAction(function(position) {
@@ -176,8 +277,8 @@
                     var height = this.viewer.canvas.clientHeight;
 
                     // Coordinate (0.0, 0.0) will be where the mouse was clicked.
-                    var x = (this.mousePosition.x - this.startMousePosition.x) / width;
-                    var y = -(this.mousePosition.y - this.startMousePosition.y) / height;
+                    var x = (this._mousePosition.x - this._startMousePosition.x) / width;
+                    var y = -(this._mousePosition.y - this._startMousePosition.y) / height;
 
                     var lookFactor = 0.05;
                     camera.lookRight(x * lookFactor);
@@ -186,6 +287,8 @@
             }.bind(this));
         };
         this.disableAtcMode = function() {
+            this._atcMode = false;
+            this._atcTower.show = true;
             this.viewer.camera.setView({
                 destination: this.airportCenter
             });
@@ -199,10 +302,113 @@
             this.handler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE);
             this.handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_UP);
         };
+        this.render = function() {
+            for(var i = 0; i < this.existings.length; i++) {
+                var existing = this.existings[i];
+                this._load3D(existing.id, existing.lat, existing.long, existing.file2);
+            }
+            for(var j = 0; j < this.obstacles.length; j++) {
+                var obstacle = this.obstacles[j];
+                this._loadPin(obstacle.id, obstacle.lat, obstacle.long, obstacle.type);
+            }
+        };
     };
 
     var map = new Map();
-    map.init('map', 'layerPicker');
+    map.init('map', 'layerPicker', {
+        /* ATC TOWER INFO */
+        // In case tower nya pindah :))
+        lat: -6.125459,
+        long: 106.659099,
+        file: './data/atc-tower.gltf'
+    });
+    map.existings = [
+        {
+            id: 1,
+            lat: -6.125057,
+            long: 106.656230,
+            file2: './data/wisma-ap.gltf'
+        },
+        {
+            id: 2,
+            lat: -6.130180,
+            long: 106.655908,
+            file2: './data/terminal1.gltf'
+        },
+        {
+            id: 3,
+            lat: -6.122455,
+            long: 106.652971,
+            file2: './data/terminal2.gltf'
+        },
+        {
+            id: 4,
+            lat: -6.118564,
+            long: 106.661344,
+            file2: './data/terminal3.gltf'
+        },
+        {
+            id: 5,
+            lat: -6.123434,
+            long: 106.661974,
+            file2: './data/tugu-batu.gltf'
+        }
+    ];
+    map.obstacles = [
+        {
+            id: 1,
+            lat: -6.129150,
+            long: 106.637662,
+            type: 'gunung'
+        },
+        {
+            id: 2,
+            lat: -6.121446,
+            long: 106.659235,
+            type: 'gedung'
+        },
+        {
+            id: 3,
+            lat: -6.121446,
+            long: 106.659235,
+            type: 'menara'
+        },
+        {
+            id: 4,
+            lat: -6.121446,
+            long: 106.659235,
+            type: 'pohon'
+        },
+        {
+            id: 5,
+            lat: -6.121446,
+            long: 106.659235,
+            type: 'flyover'
+        },
+        {
+            id: 6,
+            lat: -6.121446,
+            long: 106.659235,
+            type: 'spbu'
+        },
+        {
+            id: 7,
+            lat: -6.121446,
+            long: 106.659235,
+            type: 'lampu'
+        }
+    ];
+    map.render();
+
+    var mapContainer = document.getElementById('map');
+    mapContainer.addEventListener('obstacleClicked', function(event) {
+        console.log('Obstacle clicked!', 'Detail:');
+        console.log(event.detail);
+    });
+    mapContainer.addEventListener('existingClicked', function(event) {
+        console.log('Existing clicked!', 'Detail:');
+        console.log(event.detail);
+    });
     // var model1 = map.load3D(-6.125057, 106.656230, './data/wisma-ap.gltf');
     // var model2 = map.load3D(-6.130180, 106.655908, './data/terminal1.gltf');
     // var model3 = map.load3D(-6.122455, 106.652971, './data/terminal2.gltf');
