@@ -39,6 +39,9 @@
   <script>
     function Map() {
         this.mapDom = null;
+        this._lat = 0.0;
+        this._long = 0.0;
+        this._pinPoint = null;
         this._atcTower = null;
         this._atc = null;
         this._atcMode = false;
@@ -219,7 +222,6 @@
                 var pickedObject = this.viewer.scene.pick(click.position);
                 if (Cesium.defined(pickedObject)) {
                     var obj = Cesium.defaultValue(pickedObject.id, pickedObject.primitive.id);
-                    console.log(obj);
                     if (obj instanceof Cesium.Entity) {
                         if (obj._name.indexOf('obstacle') !== -1) {
                             var obstacleEvent = new CustomEvent("obstacleClicked", {
@@ -241,6 +243,32 @@
                             });
                             this.mapDom.dispatchEvent(existingEvent);
                             if(!this._atcMode) this.viewer.flyTo(obj);
+                        } else if (obj._id === 'pinpoint-validasi') {
+                            alert('DOR!');
+                        } else {
+                            var cartesian = this.viewer.camera.pickEllipsoid(click.position, this.viewer.scene.globe.ellipsoid);
+                            if (cartesian) {
+                                var cartographic = Cesium.Cartographic.fromCartesian(cartesian);
+                                this._long = Cesium.Math.toDegrees(cartographic.longitude);
+                                this._lat = Cesium.Math.toDegrees(cartographic.latitude);
+                                this.viewer.entities.removeById('pinpoint-validasi');
+                                var entity = this.viewer.entities.add({
+                                    id: 'pinpoint-validasi',
+                                    name: 'pinpoint-validasi',
+                                    position: Cesium.Cartesian3.fromDegrees(this._long, this._lat, 0.0),
+                                    billboard: {
+                                        image: this.pinBuilder.fromColor(Cesium.Color.BLUE, 96),
+                                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                                    },
+                                    label: {
+                                        text: 'Add Building',
+                                        font: '9px sans-serif',
+                                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                                        outlineWidth : 2,
+                                        pixelOffset : new Cesium.Cartesian2(0, -72)
+                                    }
+                                });
+                            }
                         }
                     }
                 }
