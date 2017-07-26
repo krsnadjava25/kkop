@@ -252,30 +252,29 @@
         };
         // Scene selector
         this.scene2D = function() {
+            this._atcTower.show = false;
+            this.viewer.dataSources.add(this._kkop2d);
             for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
-                if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
-                ) {
+                if (this.viewer.entities._entities._array[i]._id.indexOf('existing') > -1) {
                     this.viewer.entities._entities._array[i].show = false;
                 }
             }
             for(var j = 0; j < this._obs.length; j++) {
                 this.viewer.dataSources.add(this._obs[j].en2d);
             }
-            this._atcTower.show = false;
             this.viewer.scene.morphTo2D();
             this.viewer.scene.completeMorph();
         };
         this.scene3D = function() {
+            this._atcTower.show = true;
             for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
-                if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
-                ) {
+                if (this.viewer.entities._entities._array[i]._id.indexOf('existing') > -1) {
                     this.viewer.entities._entities._array[i].show = true;
                 }
             }
             for(var j = 0; j < this._obs.length; j++) {
                 this.viewer.dataSources.remove(this._obs[j].en2d);
             }
-            this._atcTower.show = true;
             this.viewer.scene.morphTo3D();
             this.viewer.scene.completeMorph();
         };
