@@ -108,6 +108,23 @@
                 }
             });
         };
+        this._reset = function() {
+            this.viewer.entities.suspendEvents();
+            for(var j = 0; j < this._obs.length; j++) {
+                if (this.viewer.dataSources.contains(this._obs[j].en2d)) {
+                    this.viewer.dataSources.remove(this._obs[j].en2d);
+                }
+            }
+            var tmp = this.viewer.entities._entities._array.slice();
+            for(var i = 0; i < tmp.length; i++) {
+                if (tmp[i]._id.indexOf('existing') > -1
+                    || tmp[i]._id.indexOf('obstacle') > -1
+                ) {
+                    this.viewer.entities.removeById(tmp[i]._id);
+                }
+            }
+            this.viewer.entities.resumeEvents();
+        };
         this._loadPin = function(id, lat, long, type) {
             var color;
             switch(type) {
@@ -252,6 +269,7 @@
         };
         // Scene selector
         this.scene2D = function() {
+            this._kkop2d.show = true;
             this._atcTower.show = false;
             this.viewer.dataSources.add(this._kkop2d);
             for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
@@ -261,6 +279,7 @@
             }
             for(var j = 0; j < this._obs.length; j++) {
                 this.viewer.dataSources.add(this._obs[j].en2d);
+                this._obs[j].en2d.show = true;
             }
             this.viewer.scene.morphTo2D();
             this.viewer.scene.completeMorph();
@@ -273,6 +292,7 @@
                 }
             }
             for(var j = 0; j < this._obs.length; j++) {
+                this._obs[j].en2d.show = false;
                 this.viewer.dataSources.remove(this._obs[j].en2d);
             }
             this.viewer.scene.morphTo3D();
@@ -350,6 +370,7 @@
             this.handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_UP);
         };
         this.render = function() {
+            this._reset();
             for(var i = 0; i < this.existings.length; i++) {
                 var existing = this.existings[i];
                 this._loadObstacle(existing.id, existing.lat, existing.long, existing.file2d, existing.file3d);
