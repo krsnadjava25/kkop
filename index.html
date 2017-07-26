@@ -42,11 +42,14 @@
         this._atcTower = null;
         this._atc = null;
         this._atcMode = false;
-        this.airportCenter = Cesium.Cartesian3.fromDegrees(106.660729, -6.123963, 40000.0); // 
+        this._kkop2d = null;
+        this._kkop3d = null;
+        this.airportCenter = Cesium.Cartesian3.fromDegrees(106.6671073437, -6.132692939715, 40000.0); // 
         this.imageryViews = []; // Imagery layers (OSM & Bing Map)
         this.pinBuilder = new Cesium.PinBuilder(); // Pinpoint obstacle builder
         this.existings = []; // Gedung existing
         this.obstacles = []; // Obstacle
+        this._obs = [];
         this.viewer = null; // Map view
         this.flags = { // Handler flags
             looking : false
@@ -83,25 +86,25 @@
                 this.viewer.camera.setView({
                     destination: this.airportCenter
                 });
-                // this.viewer.camera.lookAt(this.airportCenter, new Cesium.Cartesian3(0.0, 0.0, 40000.0));
             }.bind(this), 300);
         };
-        this._load3D = function(id, lat, long, file) {
-            // var modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(
-            //     Cesium.Cartesian3.fromDegrees(long, lat, 0.0));
-            // var model = this.viewer.scene.primitives.add(Cesium.Model.fromGltf({
-            //     url : file,
-            //     modelMatrix : modelMatrix,
-            //     scale : 1.0,
-            //     allowPicking: true
-            // }));
-            // return model;
+        this._loadObstacle = function(id, lat, long, file2d, file3d) {
+            var obs2d = new Cesium.KmlDataSource();
+            obs2d.load(file2d,
+            {
+                camera: this.viewer.scene.camera,
+                canvas: this.viewer.scene.canvas
+            });
+            this._obs.push({
+                id: id,
+                en2d: obs2d
+            });
             this.viewer.entities.add({
                 id: 'existing-' + id + '-3d',
                 name: 'existing-' + id + '-3d',
                 position: Cesium.Cartesian3.fromDegrees(long, lat, 0.0),
                 model: {
-                    uri: file
+                    uri: file3d
                 }
             });
         };
@@ -142,7 +145,7 @@
                 }
             });
         };
-        this.init = function(mapContainer, pickerContainer, atc) {
+        this.init = function(mapContainer, pickerContainer, kkop2d, kkop3d, atc) {
             // Cesium.BingMapsApi.defaultKey = 'AiCibxE6GWcTpteKtXFr1qh5pKNz7MfyRqDW56bCVbRE02kBaP24ZUcSGk9PpHtO';
             this.viewer = new Cesium.Viewer(mapContainer, {
                 animation: false,
@@ -156,6 +159,22 @@
                 baseLayerPicker: false,
                 imageryProvider: false
             });
+            this._kkop2d = new Cesium.KmlDataSource();
+            this._kkop2d.load(kkop2d,
+            {
+                camera: this.viewer.scene.camera,
+                canvas: this.viewer.scene.canvas
+            });
+            this.viewer.dataSources.add(this._kkop2d);
+            this._kkop3d = this.viewer.entities.add({
+                id: 'kkop-3d',
+                name: 'kkop-3d',
+                position: Cesium.Cartesian3.fromDegrees(106.6671073437, -6.132692939715, 0.0),
+                model: {
+                    uri: kkop3d
+                }
+            });
+            this._kkop3d.show = false;
             this.imageryViews.push(this._osm);
             this.imageryViews.push(this._bing);
             var layers = this.viewer.imageryLayers;
@@ -183,6 +202,7 @@
                 var pickedObject = this.viewer.scene.pick(click.position);
                 if (Cesium.defined(pickedObject)) {
                     var obj = Cesium.defaultValue(pickedObject.id, pickedObject.primitive.id);
+                    console.log(obj);
                     if (obj instanceof Cesium.Entity) {
                         if (obj._name.indexOf('obstacle') !== -1) {
                             var obstacleEvent = new CustomEvent("obstacleClicked", {
@@ -232,14 +252,38 @@
         };
         // Scene selector
         this.scene2D = function() {
+            for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                ) {
+                    this.viewer.entities._entities._array[i].show = false;
+                }
+            }
+            for(var j = 0; j < this._obs.length; j++) {
+                this.viewer.dataSources.add(this._obs[j].en2d);
+            }
+            this._atcTower.show = false;
             this.viewer.scene.morphTo2D();
             this.viewer.scene.completeMorph();
         };
         this.scene3D = function() {
+            for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                ) {
+                    this.viewer.entities._entities._array[i].show = true;
+                }
+            }
+            for(var j = 0; j < this._obs.length; j++) {
+                this.viewer.dataSources.remove(this._obs[j].en2d);
+            }
+            this._atcTower.show = true;
             this.viewer.scene.morphTo3D();
             this.viewer.scene.completeMorph();
         };
         this.enableAtcMode = function() {
+            if (this.viewer.dataSources.contains(this._kkop2d)) {
+                this.viewer.dataSources.remove(this._kkop2d);
+                this._kkop3d.show = true;
+            }
             this._atcMode = true;
             this._atcTower.show = false;
             this.viewer.camera.setView({
@@ -287,6 +331,10 @@
             }.bind(this));
         };
         this.disableAtcMode = function() {
+            if (!this.viewer.dataSources.contains(this._kkop2d)) {
+                this._kkop3d.show = false;
+                this.viewer.dataSources.add(this._kkop2d);
+            }
             this._atcMode = false;
             this._atcTower.show = true;
             this.viewer.camera.setView({
@@ -305,7 +353,7 @@
         this.render = function() {
             for(var i = 0; i < this.existings.length; i++) {
                 var existing = this.existings[i];
-                this._load3D(existing.id, existing.lat, existing.long, existing.file2);
+                this._loadObstacle(existing.id, existing.lat, existing.long, existing.file2d, existing.file3d);
             }
             for(var j = 0; j < this.obstacles.length; j++) {
                 var obstacle = this.obstacles[j];
@@ -315,7 +363,10 @@
     };
 
     var map = new Map();
-    map.init('map', 'layerPicker', {
+    map.init('map', 'layerPicker',
+    './data/kkop2d.kml',
+    './data/kkop3d.gltf',
+    {
         /* ATC TOWER INFO */
         // In case tower nya pindah :))
         lat: -6.125459,
@@ -327,32 +378,33 @@
             id: 1,
             lat: -6.125057,
             long: 106.656230,
-            file2: './data/wisma-ap.gltf'
-        },
-        {
-            id: 2,
-            lat: -6.130180,
-            long: 106.655908,
-            file2: './data/terminal1.gltf'
-        },
-        {
-            id: 3,
-            lat: -6.122455,
-            long: 106.652971,
-            file2: './data/terminal2.gltf'
-        },
-        {
-            id: 4,
-            lat: -6.118564,
-            long: 106.661344,
-            file2: './data/terminal3.gltf'
-        },
-        {
-            id: 5,
-            lat: -6.123434,
-            long: 106.661974,
-            file2: './data/tugu-batu.gltf'
+            file2d: './data/wisma-ap.kml',
+            file3d: './data/wisma-ap.gltf'
         }
+        // {
+        //     id: 2,
+        //     lat: -6.130180,
+        //     long: 106.655908,
+        //     file2: './data/terminal1.gltf'
+        // },
+        // {
+        //     id: 3,
+        //     lat: -6.122455,
+        //     long: 106.652971,
+        //     file2: './data/terminal2.gltf'
+        // },
+        // {
+        //     id: 4,
+        //     lat: -6.118564,
+        //     long: 106.661344,
+        //     file2: './data/terminal3.gltf'
+        // },
+        // {
+        //     id: 5,
+        //     lat: -6.123434,
+        //     long: 106.661974,
+        //     file2: './data/tugu-batu.gltf'
+        // }
     ];
     map.obstacles = [
         {
