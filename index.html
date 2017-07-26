@@ -267,6 +267,47 @@
             }
             
         };
+        // Fungsi filter
+        this.filterByTypes = function(types) {
+            for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                ) {
+                    this.viewer.entities._entities._array[i].show = true;
+                }
+            }
+            if (types.length > 0) {
+                for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                    if (types.includes(this.viewer.entities._entities._array[i]._id.split('-')[2])
+                        && this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                    ) {
+                        this.viewer.entities._entities._array[i].show = true;
+                    } else if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                    ) {
+                        this.viewer.entities._entities._array[i].show = false;
+                    }
+                }
+            }
+        };
+        this.filterByIds = function(ids) {
+            for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                ) {
+                    this.viewer.entities._entities._array[i].show = true;
+                }
+            }
+            if (ids.length > 0) {
+                for(var i = 0; i < this.viewer.entities._entities._array.length; i++) {
+                    if (ids.includes(parseInt(this.viewer.entities._entities._array[i]._id.split('-')[1]))
+                        && this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                    ) {
+                        this.viewer.entities._entities._array[i].show = true;
+                    } else if (this.viewer.entities._entities._array[i]._id.indexOf('obstacle') > -1
+                    ) {
+                        this.viewer.entities._entities._array[i].show = false;
+                    }
+                }
+            }
+        };
         // Scene selector
         this.scene2D = function() {
             this._kkop2d.show = true;
